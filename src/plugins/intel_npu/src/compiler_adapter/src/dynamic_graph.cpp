@@ -369,22 +369,17 @@ void DynamicGraphImpl::executeGraph(const std::shared_ptr<ZeroInitStructsHolder>
                 OPENVINO_THROW("Failed to execute VM runtime engine to update commandlist");
             }
 
-            // according to spec, CloseCommandList should be called after
-            // UpdateMutableCommandList is called.
-            for (auto& cmdList : commandLists) {
-                zeCommandListClose(cmdList);
-            }
         } else {
             _logger.debug("Reuse command list without update since no tensor change detected");
-        }
-
-        auto result = zeCommandQueueExecuteCommandLists(commandQueue,
+            auto result = zeCommandQueueExecuteCommandLists(commandQueue,
                                                         static_cast<uint32_t>(commandLists.size()),
                                                         commandLists.data(),
                                                         fence);
-        if (result != ZE_RESULT_SUCCESS) {
-            OPENVINO_THROW("Failed to submit command lists");
+            if (result != ZE_RESULT_SUCCESS) {
+                OPENVINO_THROW("Failed to submit command lists");
+            }
         }
+
         return;
     }
 

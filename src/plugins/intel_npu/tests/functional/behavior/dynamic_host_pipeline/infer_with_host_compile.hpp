@@ -33,7 +33,7 @@ inline std::shared_ptr<ov::Model> createMaxPoolModel() {
     const char* check_simple_model = std::getenv("CHECK_SIMPLE_MODEL");
     if (check_simple_model && std::string(check_simple_model) == "1") {
         auto input =
-            std::make_shared<ov::op::v0::Parameter>(element::f16, PartialShape{1, 16, 720, ov::Dimension(10, 1280)});
+            std::make_shared<ov::op::v0::Parameter>(element::f32, PartialShape{1, 16, 720, ov::Dimension(10, 1280)});
         input->set_friendly_name("input1");
 
         auto maxpool = std::make_shared<ov::op::v1::MaxPool>(input,
@@ -52,7 +52,7 @@ inline std::shared_ptr<ov::Model> createMaxPoolModel() {
     }
 
     auto input =
-        std::make_shared<ov::op::v0::Parameter>(element::f16, PartialShape{1, 16, 720, ov::Dimension(10, 1280)});
+        std::make_shared<ov::op::v0::Parameter>(element::f32, PartialShape{1, 16, 720, ov::Dimension(10, 1280)});
     input->set_friendly_name("input1");
 
     auto maxpool = std::make_shared<ov::op::v1::MaxPool>(input,
@@ -64,7 +64,7 @@ inline std::shared_ptr<ov::Model> createMaxPoolModel() {
                                                          op::PadType::EXPLICIT);
     maxpool->set_friendly_name("MaxPool_2");
 
-    auto scale = ov::opset6::Constant::create(element::f16, Shape{}, {2.0f});
+    auto scale = ov::opset6::Constant::create(element::f32, Shape{}, {2.0f});
     scale->set_friendly_name("scale_const");
 
     auto mul = std::make_shared<ov::op::v1::Multiply>(maxpool, scale);
@@ -655,6 +655,24 @@ TEST_P(InferWithHostCompileTests, CompileAndInferWithZeroTensor) {
     ASSERT_TRUE(logContains(logCapture, "Update command list with new tensor pointer"))
         << "Expected log to contain 'Update command list with new tensor pointer' for fourth inference, but got: "
         << logCapture.str();
+
+    logCapture.clear();
+    auto outputShape = reqDynamic1.get_tensor(model->output()).get_shape();
+    auto zeroOutputTensorForFifthInfer = zeroContext.create_host_tensor(model->input().get_element_type(), outputShape);
+    auto hostTensorSourceForOutputForFifthInfer =
+        ov::test::utils::create_and_fill_tensor(model->input().get_element_type(), outputShape, 100, 0);
+    ASSERT_EQ(hostTensorSourceForOutputForFifthInfer.get_byte_size(), zeroOutputTensorForFifthInfer.get_byte_size())
+        << "Source and destination tensors must have identical byte sizes for copy";
+    std::memcpy(zeroOutputTensorForFifthInfer.data(),
+                hostTensorSourceForOutputForFifthInfer.data(),
+                hostTensorSourceForOutputForFifthInfer.get_byte_size());
+    OV_ASSERT_NO_THROW(reqDynamic1.set_tensor(model->output(), zeroOutputTensorForFifthInfer));
+    inferAndCompare(model, reqDynamic1, reqReference1, "CompileAndInferWithZeroTensor_fifth");
+    // Feeding a context-allocated host tensor should also update the command list to the new pointer.
+    ASSERT_TRUE(logContains(logCapture, "Update command list with new tensor pointer"))
+        << "Expected log to contain 'Update command list with new tensor pointer' for fifth inference, but got: "
+        << logCapture.str();
+
 }
 
 // Compare HostCompile inference results against the Template plugin while also checking command-list reuse behavior.
